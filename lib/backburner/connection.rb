@@ -8,8 +8,9 @@ module Backburner
 
     # Constructs a backburner connection
     # `url` can be a string i.e 'localhost:3001' or an array of addresses.
-    def initialize(url)
-      @url = url
+    def initialize(configuration)
+      @url = configuration.beanstalk_url
+      @ironmq_auth = configuration.ironmq_auth
       connect!
     end
 
@@ -24,7 +25,19 @@ module Backburner
 
     # Connects to a beanstalk queue
     def connect!
-      @beanstalk ||= Beaneater::Pool.new(beanstalk_addresses)
+      if not @beanstalk
+        @beanstalk = Beaneater::Pool.new(beanstalk_addresses)
+        if @ironmq_auth
+          project_id    = @ironmq_auth[:project_id]
+          token         = @ironmq_auth[:token]
+          oauth_string  = "oauth #{token} #{project_id}"
+          # HACK -- the following is a weird requirement of IronMQ.
+          # I don't understand it.
+          @beanstalk.transmit_to_all("put 0 0 0 #{oauth_string.length}\r\n")
+          @beanstalk.transmit_to_all(oauth_string)
+        end
+      end
+      @beanstalk
     end
 
     # Returns the beanstalk queue addresses
